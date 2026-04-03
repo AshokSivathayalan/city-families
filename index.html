@@ -188,6 +188,41 @@
       padding: 2px 0;
     }
 
+    /* Families */
+    .family-stats { font-size: 12px; color: #aaa; margin-bottom: 12px; line-height: 1.6; }
+    .family-stats strong { color: #6ee7b7; }
+    .filter-btns { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }
+    .filter-btn {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: #aaa;
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .filter-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .filter-btn.active { background: rgba(110,231,183,0.15); color: #6ee7b7; border-color: rgba(110,231,183,0.3); }
+    .family-list {
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .family-item {
+      padding: 7px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: background 0.1s;
+    }
+    .family-item:hover { background: rgba(255,255,255,0.06); }
+    .family-item.selected { background: rgba(110,231,183,0.12); }
+    .family-item .family-label { color: #e0e0e0; }
+    .family-item .family-size { color: #888; font-size: 11px; }
+
     /* Tooltip */
     #tooltip {
       position: absolute;
@@ -258,8 +293,9 @@
     <!-- Tab bar -->
     <div class="tab-bar">
       <button class="tab-btn active" data-tab="map">Map</button>
-      <button class="tab-btn" data-tab="pathfinder">Pathfinder</button>
+      <button class="tab-btn" data-tab="pathfinder">Path</button>
       <button class="tab-btn" data-tab="explorer">Explorer</button>
+      <button class="tab-btn" data-tab="families">Families</button>
     </div>
 
     <!-- Map controls tab -->
@@ -338,6 +374,16 @@
       </div>
       <div class="path-error" id="ego-error" style="display:none;"></div>
     </div>
+
+    <!-- Families tab -->
+    <div class="tool-panel" id="tab-families">
+      <div class="family-stats" id="family-stats"></div>
+      <div class="filter-btns" id="family-filters"></div>
+      <div class="btn-row" style="margin-bottom:10px;">
+        <button class="btn btn-ghost btn-sm" id="btn-clear-family" style="display:none;">Clear selection</button>
+      </div>
+      <div class="family-list" id="family-list"></div>
+    </div>
   </div>
 
   <div id="tooltip">
@@ -378,7 +424,9 @@
     let cityNames = [];       // sorted list for autocomplete
     let currentPath = null;   // array of city names, or null
     let currentEgo = null;    // { center: string, depths: Map<name, depth> } or null
+    let currentFamily = null; // family index (number) or null
     let showArcs = false;     // arcs hidden by default
+    let families = [];        // array of { id, members: [name, ...], size } sorted by size desc
 
     // ── Tabs ──
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -488,8 +536,8 @@
       const width = parseInt(document.getElementById('width').value);
       const minDegree = parseInt(document.getElementById('min-degree').value);
 
-      // If a path or ego view is active, dim everything else
-      const dimmed = currentPath !== null || currentEgo !== null;
+      // If a tool view is active, dim everything else
+      const dimmed = currentPath !== null || currentEgo !== null || currentFamily !== null;
       const arcOpacity = dimmed ? 0.08 : baseOpacity;
 
       // Filter arcs and nodes by min-degree when arcs are shown
@@ -669,6 +717,52 @@
         }
       }
 
+      // Family highlight layers
+      if (currentFamily !== null) {
+        const familyNodes = allData.nodes.filter(n => n.family === currentFamily);
+        const familyNameSet = new Set(familyNodes.map(n => n.name));
+
+        // Family arcs — edges where both endpoints are in the family
+        const familyArcs = (allData.edges || [])
+          .filter(e => familyNameSet.has(e.source) && familyNameSet.has(e.target))
+          .map(e => {
+            const src = cityByName.get(e.source);
+            const tgt = cityByName.get(e.target);
+            return src && tgt ? {
+              sourcePosition: [src.lon, src.lat],
+              targetPosition: [tgt.lon, tgt.lat],
+              sourceName: src.name,
+              targetName: tgt.name,
+            } : null;
+          })
+          .filter(Boolean);
+
+        if (familyArcs.length) {
+          layers.push(new deck.PathLayer({
+            id: 'family-arcs',
+            data: expandArcsToPathData(familyArcs),
+            getPath: d => d._flatPath,
+            getColor: [110, 231, 183, 220],
+            getWidth: 3,
+            widthUnits: 'pixels',
+            pickable: true,
+            onHover: onArcHover,
+          }));
+        }
+
+        layers.push(new deck.ScatterplotLayer({
+          id: 'family-cities',
+          data: familyNodes,
+          getPosition: d => [d.lon, d.lat],
+          getFillColor: [110, 231, 183, 230],
+          getRadius: 40000,
+          radiusMinPixels: 4,
+          radiusMaxPixels: 14,
+          pickable: true,
+          onHover: onCityHover,
+        }));
+      }
+
       deckInstance.setProps({ layers });
     }
 
@@ -796,9 +890,12 @@
     }
 
     function showPath(path) {
-      // Clear ego state if active
+      // Clear other tool states
       currentEgo = null;
+      currentFamily = null;
       document.getElementById('ego-result').classList.remove('visible');
+      document.getElementById('btn-clear-family').style.display = 'none';
+      renderFamilyList();
 
       currentPath = path;
       const resultEl = document.getElementById('path-result');
@@ -868,9 +965,12 @@
     }
 
     function showEgo(centerName) {
-      // Clear pathfinder state if active
+      // Clear other tool states
       currentPath = null;
+      currentFamily = null;
       document.getElementById('path-result').classList.remove('visible');
+      document.getElementById('btn-clear-family').style.display = 'none';
+      renderFamilyList();
 
       const depths = getEgoNetwork(centerName);
       currentEgo = { center: centerName, depths };
@@ -938,6 +1038,122 @@
       document.getElementById('ego-result').classList.remove('visible');
       document.getElementById('ego-error').style.display = 'none';
       document.getElementById('city-ego').value = '';
+      updateLayers();
+    }
+
+    // ── Families ──
+    let familyFilter = 'all';
+
+    function buildFamilies() {
+      // Group nodes by family ID
+      const familyMap = new Map();
+      for (const node of allData.nodes) {
+        const fam = node.family;
+        if (fam === undefined) continue;
+        if (!familyMap.has(fam)) familyMap.set(fam, []);
+        familyMap.get(fam).push(node.name);
+      }
+
+      families = [];
+      for (const [id, members] of familyMap) {
+        members.sort();
+        families.push({ id, members, size: members.length });
+      }
+      families.sort((a, b) => b.size - a.size);
+    }
+
+    function initFamiliesTab() {
+      buildFamilies();
+
+      const pairs = families.filter(f => f.size === 2).length;
+      const small = families.filter(f => f.size >= 3 && f.size <= 10).length;
+      const medium = families.filter(f => f.size > 10 && f.size <= 50).length;
+      const large = families.filter(f => f.size > 50).length;
+      const giant = families[0];
+
+      const statsEl = document.getElementById('family-stats');
+      statsEl.innerHTML =
+        `<strong>${families.length}</strong> families total<br>` +
+        `Giant component: <strong>${giant ? giant.size : 0}</strong> cities<br>` +
+        `${pairs} pairs, ${small} small (3-10), ${medium} medium (11-50), ${large} large (50+)`;
+
+      // Filter buttons
+      const filters = [
+        { key: 'all', label: 'All' },
+        { key: 'pairs', label: 'Pairs' },
+        { key: 'small', label: 'Small (3-10)' },
+        { key: 'medium', label: 'Medium (11-50)' },
+        { key: 'large', label: 'Large (50+)' },
+      ];
+      const filtersEl = document.getElementById('family-filters');
+      filtersEl.innerHTML = '';
+      for (const f of filters) {
+        const btn = document.createElement('button');
+        btn.className = 'filter-btn' + (f.key === familyFilter ? ' active' : '');
+        btn.textContent = f.label;
+        btn.addEventListener('click', () => {
+          familyFilter = f.key;
+          filtersEl.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          renderFamilyList();
+        });
+        filtersEl.appendChild(btn);
+      }
+
+      renderFamilyList();
+    }
+
+    function getFilteredFamilies() {
+      switch (familyFilter) {
+        case 'pairs': return families.filter(f => f.size === 2);
+        case 'small': return families.filter(f => f.size >= 3 && f.size <= 10);
+        case 'medium': return families.filter(f => f.size > 10 && f.size <= 50);
+        case 'large': return families.filter(f => f.size > 50);
+        default: return families;
+      }
+    }
+
+    function renderFamilyList() {
+      const listEl = document.getElementById('family-list');
+      const filtered = getFilteredFamilies();
+      listEl.innerHTML = '';
+
+      for (const fam of filtered) {
+        // Label: top 2-3 city names
+        const preview = fam.members.slice(0, 3).join(', ');
+        const label = fam.members.length > 3 ? preview + ', ...' : preview;
+
+        const item = document.createElement('div');
+        item.className = 'family-item' + (currentFamily === fam.id ? ' selected' : '');
+        item.innerHTML =
+          `<span class="family-label">${label}</span>` +
+          `<span class="family-size">${fam.size}</span>`;
+        item.addEventListener('click', () => selectFamily(fam.id));
+        listEl.appendChild(item);
+      }
+
+      if (filtered.length === 0) {
+        listEl.innerHTML = '<div style="font-size:12px; color:#888; padding:8px;">No families match this filter.</div>';
+      }
+    }
+
+    function selectFamily(familyId) {
+      // Clear other tool states
+      currentPath = null;
+      currentEgo = null;
+      document.getElementById('path-result').classList.remove('visible');
+      document.getElementById('ego-result').classList.remove('visible');
+
+      currentFamily = familyId;
+      document.getElementById('btn-clear-family').style.display = 'inline-block';
+      renderFamilyList();
+      updateLayers();
+    }
+
+    function clearFamily() {
+      currentFamily = null;
+      document.getElementById('btn-clear-family').style.display = 'none';
+      renderFamilyList();
       updateLayers();
     }
 
@@ -1047,6 +1263,10 @@
       });
 
       document.getElementById('btn-clear-ego').addEventListener('click', clearEgo);
+
+      // Wire families
+      initFamiliesTab();
+      document.getElementById('btn-clear-family').addEventListener('click', clearFamily);
     }
 
     init();

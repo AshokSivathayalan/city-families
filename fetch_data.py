@@ -144,9 +144,10 @@ def get_continent(lat, lon):
 def analyze_graph(nodes, edges):
     """Build NetworkX graph, find connected components and communities."""
     if not HAS_NETWORKX:
-        # Assign default community of 0 to all nodes
         for node in nodes.values():
             node["community"] = 0
+            node["family"] = 0
+            node["familySize"] = 0
             node["continent"] = get_continent(node["lat"], node["lon"])
         return nodes, edges
 
@@ -181,9 +182,19 @@ def analyze_graph(nodes, edges):
             for node_id in comp:
                 community_map[node_id] = i
 
-    # Attach community + continent to nodes
+    # Build family (connected component) map
+    family_map = {}
+    family_size_map = {}
+    for i, comp in enumerate(components):
+        for node_id in comp:
+            family_map[node_id] = i
+            family_size_map[node_id] = len(comp)
+
+    # Attach community, family, continent to nodes
     for node_id, node_data in nodes.items():
         node_data["community"] = community_map.get(node_id, 0)
+        node_data["family"] = family_map.get(node_id, 0)
+        node_data["familySize"] = family_size_map.get(node_id, 1)
         node_data["continent"] = get_continent(node_data["lat"], node_data["lon"])
         node_data["degree"] = G.degree(node_id)
 
