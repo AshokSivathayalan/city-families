@@ -154,6 +154,40 @@
     }
     .path-error { font-size: 13px; color: #f87171; margin-top: 8px; }
 
+    /* Explorer results */
+    #ego-result { margin-top: 12px; display: none; }
+    #ego-result.visible { display: block; }
+    .ego-summary { font-size: 13px; color: #6ee7b7; margin-bottom: 10px; font-weight: 500; }
+    .degree-group { margin-bottom: 10px; }
+    .degree-header {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 5px 0;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      user-select: none;
+    }
+    .degree-header .arrow { font-size: 10px; transition: transform 0.15s; }
+    .degree-header.collapsed .arrow { transform: rotate(-90deg); }
+    .degree-header .ring-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .degree-cities {
+      max-height: 120px;
+      overflow-y: auto;
+      padding-left: 22px;
+    }
+    .degree-cities.collapsed { display: none; }
+    .degree-cities .city-item {
+      font-size: 12px;
+      color: #aaa;
+      padding: 2px 0;
+    }
+
     /* Tooltip */
     #tooltip {
       position: absolute;
@@ -225,25 +259,36 @@
     <div class="tab-bar">
       <button class="tab-btn active" data-tab="map">Map</button>
       <button class="tab-btn" data-tab="pathfinder">Pathfinder</button>
+      <button class="tab-btn" data-tab="explorer">Explorer</button>
     </div>
 
     <!-- Map controls tab -->
     <div class="tool-panel active" id="tab-map">
-      <div class="field">
-        <label>Color arcs by</label>
-        <select id="color-mode">
-          <option value="community">Community</option>
-          <option value="continent">Source continent</option>
-          <option value="distance">Distance</option>
-        </select>
+      <div class="field" style="display:flex; align-items:center; gap:8px;">
+        <input type="checkbox" id="show-arcs" style="accent-color:#6ee7b7;" />
+        <label for="show-arcs" style="margin:0; cursor:pointer;">Show arcs</label>
       </div>
-      <div class="field">
-        <label>Arc opacity</label>
-        <input type="range" id="opacity" min="5" max="100" value="35" />
-      </div>
-      <div class="field">
-        <label>Arc width</label>
-        <input type="range" id="width" min="1" max="8" value="2" />
+      <div id="arc-controls" style="display:none;">
+        <div class="field">
+          <label>Color arcs by</label>
+          <select id="color-mode">
+            <option value="community">Community</option>
+            <option value="continent">Source continent</option>
+            <option value="distance">Distance</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Arc opacity</label>
+          <input type="range" id="opacity" min="5" max="100" value="35" />
+        </div>
+        <div class="field">
+          <label>Arc width</label>
+          <input type="range" id="width" min="1" max="8" value="2" />
+        </div>
+        <div class="field">
+          <label>Min twins: <span id="min-degree-val">1</span></label>
+          <input type="range" id="min-degree" min="1" max="30" value="1" />
+        </div>
       </div>
     </div>
 
@@ -273,6 +318,26 @@
       </div>
       <div class="path-error" id="path-error" style="display:none;"></div>
     </div>
+
+    <!-- Explorer tab -->
+    <div class="tool-panel" id="tab-explorer">
+      <div class="field">
+        <label>City</label>
+        <div class="autocomplete-wrap" id="ac-ego">
+          <input type="text" id="city-ego" placeholder="Start typing a city name..." autocomplete="off" />
+          <div class="autocomplete-list" id="ac-ego-list"></div>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btn-explore">Explore</button>
+        <button class="btn btn-ghost" id="btn-clear-ego">Clear</button>
+      </div>
+      <div id="ego-result">
+        <div class="ego-summary" id="ego-summary"></div>
+        <div id="ego-groups"></div>
+      </div>
+      <div class="path-error" id="ego-error" style="display:none;"></div>
+    </div>
   </div>
 
   <div id="tooltip">
@@ -297,6 +362,13 @@
       'Africa': [236, 72, 153], 'Oceania': [56, 189, 248], 'Other': [180, 180, 180],
     };
     const PATH_COLOR = [255, 220, 80];
+    const EGO_COLORS = [
+      [255, 220, 80],   // center (gold)
+      [110, 231, 183],  // 1st degree (emerald)
+      [56, 189, 248],   // 2nd degree (sky)
+    ];
+    const EGO_OPACITIES = [1.0, 0.9, 0.45];
+    const EGO_WIDTHS = [0, 4, 2]; // index 0 unused (center has no arcs to itself)
 
     // ── State ──
     let allData = null;
@@ -305,6 +377,8 @@
     let cityByName = null;    // Map<name, nodeObj>
     let cityNames = [];       // sorted list for autocomplete
     let currentPath = null;   // array of city names, or null
+    let currentEgo = null;    // { center: string, depths: Map<name, depth> } or null
+    let showArcs = false;     // arcs hidden by default
 
     // ── Tabs ──
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -331,6 +405,80 @@
       }
     }
 
+    // ── Great-circle interpolation ──
+    // Returns an array of [lon, lat] points along the great circle between two points.
+    // Handles antimeridian crossing by keeping longitude continuous (unwrapped).
+    function greatCirclePoints(lon1, lat1, lon2, lat2, numPoints = 30) {
+      const toRad = Math.PI / 180;
+      const toDeg = 180 / Math.PI;
+      const phi1 = lat1 * toRad, lam1 = lon1 * toRad;
+      const phi2 = lat2 * toRad, lam2 = lon2 * toRad;
+
+      const dLam = lam2 - lam1;
+      const d = Math.acos(
+        Math.sin(phi1) * Math.sin(phi2) +
+        Math.cos(phi1) * Math.cos(phi2) * Math.cos(dLam)
+      );
+
+      // If points are very close, just return a straight line
+      if (d < 1e-6) return [[lon1, lat1], [lon2, lat2]];
+
+      const points = [];
+      for (let i = 0; i <= numPoints; i++) {
+        const f = i / numPoints;
+        const A = Math.sin((1 - f) * d) / Math.sin(d);
+        const B = Math.sin(f * d) / Math.sin(d);
+        const x = A * Math.cos(phi1) * Math.cos(lam1) + B * Math.cos(phi2) * Math.cos(lam2);
+        const y = A * Math.cos(phi1) * Math.sin(lam1) + B * Math.cos(phi2) * Math.sin(lam2);
+        const z = A * Math.sin(phi1) + B * Math.sin(phi2);
+        const lat = Math.atan2(z, Math.sqrt(x * x + y * y)) * toDeg;
+        let lon = Math.atan2(y, x) * toDeg;
+        points.push([lon, lat]);
+      }
+
+      // Unwrap longitude so the path doesn't jump across the map
+      for (let i = 1; i < points.length; i++) {
+        while (points[i][0] - points[i - 1][0] > 180) points[i][0] -= 360;
+        while (points[i][0] - points[i - 1][0] < -180) points[i][0] += 360;
+      }
+
+      return points;
+    }
+
+    // Precompute path(s) for an arc object (cached on first access).
+    // Returns an array of path arrays. Cross-antimeridian arcs get a duplicate
+    // shifted by ±360° so they're visible on both sides of the map.
+    function getArcPaths(arc) {
+      if (!arc._paths) {
+        const [lon1, lat1] = arc.sourcePosition;
+        const [lon2, lat2] = arc.targetPosition;
+        const path = greatCirclePoints(lon1, lat1, lon2, lat2);
+        const minLon = Math.min(...path.map(p => p[0]));
+        const maxLon = Math.max(...path.map(p => p[0]));
+
+        arc._paths = [path];
+        // If the path extends outside [-180, 180], add a wrapped copy
+        if (maxLon > 180) {
+          arc._paths.push(path.map(([lon, lat]) => [lon - 360, lat]));
+        } else if (minLon < -180) {
+          arc._paths.push(path.map(([lon, lat]) => [lon + 360, lat]));
+        }
+      }
+      return arc._paths;
+    }
+
+    // Expand a list of arc objects into path-layer-ready items,
+    // duplicating cross-antimeridian arcs. Preserves source arc reference for color/hover.
+    function expandArcsToPathData(arcs) {
+      const items = [];
+      for (const arc of arcs) {
+        for (const path of getArcPaths(arc)) {
+          items.push({ ...arc, _flatPath: path });
+        }
+      }
+      return items;
+    }
+
     // ── Layer rendering ──
     function updateLayers() {
       if (!allData || !deckInstance) return;
@@ -338,32 +486,42 @@
       const mode = document.getElementById('color-mode').value;
       const baseOpacity = parseInt(document.getElementById('opacity').value) / 100;
       const width = parseInt(document.getElementById('width').value);
+      const minDegree = parseInt(document.getElementById('min-degree').value);
 
-      // If a path is active, dim everything else
-      const dimmed = currentPath !== null;
+      // If a path or ego view is active, dim everything else
+      const dimmed = currentPath !== null || currentEgo !== null;
       const arcOpacity = dimmed ? 0.08 : baseOpacity;
+
+      // Filter arcs and nodes by min-degree when arcs are shown
+      const arcsVisible = showArcs && !dimmed;
+      const filteredArcs = arcsVisible
+        ? allData.arcs.filter(d => {
+            const src = cityByName.get(d.sourceName);
+            const tgt = cityByName.get(d.targetName);
+            return (src && (src.degree || 0) >= minDegree) && (tgt && (tgt.degree || 0) >= minDegree);
+          })
+        : [];
 
       const layers = [];
 
-      // Base arc layer
-      layers.push(new deck.ArcLayer({
-        id: 'arcs',
-        data: allData.arcs,
-        getSourcePosition: d => d.sourcePosition,
-        getTargetPosition: d => d.targetPosition,
-        getSourceColor: d => [...getArcColor(d, mode), Math.round(arcOpacity * 255)],
-        getTargetColor: d => [...getArcColor(d, mode), Math.round(arcOpacity * 180)],
-        getWidth: width,
-        greatCircle: true,
-        pickable: !dimmed,
-        autoHighlight: true,
-        highlightColor: [255, 255, 255, 200],
-        onHover: onArcHover,
-        updateTriggers: {
-          getSourceColor: [mode, arcOpacity],
-          getTargetColor: [mode, arcOpacity],
-        },
-      }));
+      // Base arc layer (only when arcs toggled on and no tool is active)
+      if (arcsVisible) {
+        layers.push(new deck.PathLayer({
+          id: 'arcs',
+          data: expandArcsToPathData(filteredArcs),
+          getPath: d => d._flatPath,
+          getColor: d => [...getArcColor(d, mode), Math.round(baseOpacity * 255)],
+          getWidth: width,
+          widthUnits: 'pixels',
+          pickable: true,
+          autoHighlight: true,
+          highlightColor: [255, 255, 255, 200],
+          onHover: onArcHover,
+          updateTriggers: {
+            getColor: [mode, baseOpacity],
+          },
+        }));
+      }
 
       // Base scatter layer
       layers.push(new deck.ScatterplotLayer({
@@ -371,7 +529,7 @@
         data: allData.nodes,
         getPosition: d => [d.lon, d.lat],
         getFillColor: d => {
-          if (dimmed) return [150, 150, 150, 40];
+          if (dimmed) return [100, 100, 120, 25];
           if (mode === 'community') return [...COMMUNITY_COLORS[d.community % COMMUNITY_COLORS.length], 200];
           if (mode === 'continent') return [...(CONTINENT_COLORS[d.continent] || CONTINENT_COLORS['Other']), 200];
           return [110, 231, 183, 200];
@@ -401,15 +559,13 @@
           }
         }
 
-        layers.push(new deck.ArcLayer({
+        layers.push(new deck.PathLayer({
           id: 'path-arcs',
-          data: pathArcs,
-          getSourcePosition: d => d.sourcePosition,
-          getTargetPosition: d => d.targetPosition,
-          getSourceColor: [...PATH_COLOR, 255],
-          getTargetColor: [...PATH_COLOR, 200],
+          data: expandArcsToPathData(pathArcs),
+          getPath: d => d._flatPath,
+          getColor: [...PATH_COLOR, 255],
           getWidth: Math.max(width * 2, 4),
-          greatCircle: true,
+          widthUnits: 'pixels',
           pickable: true,
           onHover: onArcHover,
         }));
@@ -427,6 +583,90 @@
           pickable: true,
           onHover: onCityHover,
         }));
+      }
+
+      // Ego-network layers (3 degree rings)
+      if (currentEgo) {
+        const { center, depths } = currentEgo;
+
+        // Group edges by degree ring: ring N = edges connecting a depth N-1 node to a depth N node
+        for (let deg = 1; deg <= 2; deg++) {
+          const ringArcs = [];
+          const ringNodes = [];
+          const color = EGO_COLORS[deg];
+          const alpha = EGO_OPACITIES[deg];
+          const w = EGO_WIDTHS[deg];
+
+          // Collect nodes at this depth
+          for (const [name, d] of depths) {
+            if (d === deg) {
+              const node = cityByName.get(name);
+              if (node) ringNodes.push(node);
+            }
+          }
+
+          // Collect edges: source at depth deg-1, target at depth deg (or vice versa)
+          for (const edge of (allData.edges || [])) {
+            const sd = depths.get(edge.source);
+            const td = depths.get(edge.target);
+            if (sd === undefined || td === undefined) continue;
+            if ((sd === deg - 1 && td === deg) || (sd === deg && td === deg - 1)) {
+              const src = cityByName.get(edge.source);
+              const tgt = cityByName.get(edge.target);
+              if (src && tgt) {
+                ringArcs.push({
+                  sourcePosition: [src.lon, src.lat],
+                  targetPosition: [tgt.lon, tgt.lat],
+                  sourceName: src.name,
+                  targetName: tgt.name,
+                });
+              }
+            }
+          }
+
+          if (ringArcs.length) {
+            layers.push(new deck.PathLayer({
+              id: `ego-arcs-${deg}`,
+              data: expandArcsToPathData(ringArcs),
+              getPath: d => d._flatPath,
+              getColor: [...color, Math.round(alpha * 255)],
+              getWidth: w,
+              widthUnits: 'pixels',
+              pickable: true,
+              onHover: onArcHover,
+            }));
+          }
+
+          if (ringNodes.length) {
+            layers.push(new deck.ScatterplotLayer({
+              id: `ego-dots-${deg}`,
+              data: ringNodes,
+              getPosition: d => [d.lon, d.lat],
+              getFillColor: [...color, Math.round(alpha * 230)],
+              getRadius: Math.max(20000, 50000 - deg * 12000),
+              radiusMinPixels: Math.max(2, 6 - deg),
+              radiusMaxPixels: Math.max(6, 14 - deg * 3),
+              pickable: true,
+              onHover: onCityHover,
+            }));
+          }
+        }
+
+        // Center city dot (on top)
+        const centerNode = cityByName.get(center);
+        if (centerNode) {
+          layers.push(new deck.ScatterplotLayer({
+            id: 'ego-center',
+            data: [centerNode],
+            getPosition: d => [d.lon, d.lat],
+            getFillColor: [...EGO_COLORS[0], 255],
+            getRadius: 60000,
+            radiusMinPixels: 7,
+            radiusMaxPixels: 18,
+            pickable: true,
+            onHover: onCityHover,
+          }));
+        }
       }
 
       deckInstance.setProps({ layers });
@@ -556,6 +796,10 @@
     }
 
     function showPath(path) {
+      // Clear ego state if active
+      currentEgo = null;
+      document.getElementById('ego-result').classList.remove('visible');
+
       currentPath = path;
       const resultEl = document.getElementById('path-result');
       const summaryEl = document.getElementById('path-summary');
@@ -596,6 +840,104 @@
       document.getElementById('path-error').style.display = 'none';
       document.getElementById('city-from').value = '';
       document.getElementById('city-to').value = '';
+      updateLayers();
+    }
+
+    // ── Ego-network (Explorer) ──
+    function getEgoNetwork(centerName, maxDepth = 2) {
+      const depths = new Map();
+      depths.set(centerName, 0);
+      const queue = [centerName];
+
+      while (queue.length > 0) {
+        const current = queue.shift();
+        const currentDepth = depths.get(current);
+        if (currentDepth >= maxDepth) continue;
+
+        const neighbors = adjacency.get(current);
+        if (!neighbors) continue;
+        for (const neighbor of neighbors) {
+          if (!depths.has(neighbor)) {
+            depths.set(neighbor, currentDepth + 1);
+            queue.push(neighbor);
+          }
+        }
+      }
+
+      return depths;
+    }
+
+    function showEgo(centerName) {
+      // Clear pathfinder state if active
+      currentPath = null;
+      document.getElementById('path-result').classList.remove('visible');
+
+      const depths = getEgoNetwork(centerName);
+      currentEgo = { center: centerName, depths };
+
+      // Count per degree
+      const counts = [0, 0, 0]; // index 0 = center
+      for (const d of depths.values()) counts[d]++;
+
+      const resultEl = document.getElementById('ego-result');
+      const summaryEl = document.getElementById('ego-summary');
+      const groupsEl = document.getElementById('ego-groups');
+      const errorEl = document.getElementById('ego-error');
+
+      errorEl.style.display = 'none';
+      resultEl.classList.add('visible');
+
+      const parts = [];
+      if (counts[1]) parts.push(`${counts[1]} twin${counts[1] !== 1 ? 's' : ''}`);
+      if (counts[2]) parts.push(`${counts[2]} 2nd-degree`);
+      summaryEl.textContent = parts.join(', ') || 'No connections found.';
+
+      // Build collapsible groups per degree
+      groupsEl.innerHTML = '';
+      const labels = ['', '1st degree (twins)', '2nd degree'];
+      for (let deg = 1; deg <= 2; deg++) {
+        const cities = [];
+        for (const [name, d] of depths) {
+          if (d === deg) cities.push(name);
+        }
+        if (cities.length === 0) continue;
+        cities.sort();
+
+        const group = document.createElement('div');
+        group.className = 'degree-group';
+
+        const header = document.createElement('div');
+        header.className = 'degree-header';
+        const dotColor = EGO_COLORS[deg];
+        header.innerHTML = `<span class="arrow">\u25BC</span><span class="ring-dot" style="background:rgb(${dotColor.join(',')})"></span>${labels[deg]} (${cities.length})`;
+
+        const list = document.createElement('div');
+        list.className = 'degree-cities';
+        for (const name of cities) {
+          const item = document.createElement('div');
+          item.className = 'city-item';
+          item.textContent = name;
+          list.appendChild(item);
+        }
+
+        header.addEventListener('click', () => {
+          header.classList.toggle('collapsed');
+          list.classList.toggle('collapsed');
+        });
+
+        group.appendChild(header);
+        group.appendChild(list);
+        groupsEl.appendChild(group);
+      }
+
+      updateLayers();
+    }
+
+    function clearEgo() {
+      currentEgo = null;
+      document.getElementById('ego-result').classList.remove('visible');
+      document.getElementById('ego-error').style.display = 'none';
+      document.getElementById('city-ego').value = '';
       updateLayers();
     }
 
@@ -648,9 +990,20 @@
       document.getElementById('loading').style.display = 'none';
 
       // Wire map controls
+      const showArcsCheckbox = document.getElementById('show-arcs');
+      const arcControls = document.getElementById('arc-controls');
+      showArcsCheckbox.addEventListener('change', () => {
+        showArcs = showArcsCheckbox.checked;
+        arcControls.style.display = showArcs ? 'block' : 'none';
+        updateLayers();
+      });
       document.getElementById('color-mode').addEventListener('change', updateLayers);
       document.getElementById('opacity').addEventListener('input', updateLayers);
       document.getElementById('width').addEventListener('input', updateLayers);
+      document.getElementById('min-degree').addEventListener('input', (e) => {
+        document.getElementById('min-degree-val').textContent = e.target.value;
+        updateLayers();
+      });
 
       // Wire autocomplete
       setupAutocomplete('city-from', 'ac-from-list');
@@ -674,6 +1027,26 @@
       });
 
       document.getElementById('btn-clear-path').addEventListener('click', clearPath);
+
+      // Wire explorer
+      setupAutocomplete('city-ego', 'ac-ego-list');
+
+      document.getElementById('btn-explore').addEventListener('click', () => {
+        const city = document.getElementById('city-ego').value.trim();
+        if (!city) {
+          document.getElementById('ego-error').textContent = 'Enter a city name.';
+          document.getElementById('ego-error').style.display = 'block';
+          return;
+        }
+        if (!cityByName.has(city)) {
+          document.getElementById('ego-error').textContent = `City not found: "${city}"`;
+          document.getElementById('ego-error').style.display = 'block';
+          return;
+        }
+        showEgo(city);
+      });
+
+      document.getElementById('btn-clear-ego').addEventListener('click', clearEgo);
     }
 
     init();
