@@ -6,6 +6,8 @@ pulls coordinates, builds a NetworkX graph, detects communities,
 and exports everything as JSON for the map visualization.
 """
 
+import csv
+import io
 import json
 import urllib.request
 import urllib.parse
@@ -42,46 +44,51 @@ def fetch_twin_cities():
     """Query Wikidata SPARQL endpoint for twin city pairs with coordinates."""
     print("Querying Wikidata for twin city relationships...")
 
-    # Use POST to avoid URL-length issues and response corruption on large results
+    # Use POST + CSV format to avoid JSON encoding issues on large result sets
     post_data = urllib.parse.urlencode({
         "query": QUERY,
     }).encode("utf-8")
 
     req = urllib.request.Request(SPARQL_ENDPOINT, data=post_data, headers={
         "User-Agent": "TwinCitiesViz/1.0 (https://github.com/twin-cities-viz)",
-        "Accept": "application/sparql-results+json",
+        "Accept": "text/csv",
         "Content-Type": "application/x-www-form-urlencoded",
     })
 
     with urllib.request.urlopen(req, timeout=300) as resp:
         raw = resp.read()
 
-    # Wikidata labels can contain control characters that break strict JSON parsing
     text = raw.decode("utf-8")
-    data = json.JSONDecoder(strict=False).decode(text)
-
-    results = data["results"]["bindings"]
+    reader = csv.DictReader(io.StringIO(text))
+    results = list(reader)
     print(f"  Got {len(results)} raw twin-city pairs from Wikidata.")
     return results
 
 
 def parse_results(results):
-    """Parse SPARQL results into nodes and edges."""
+    """Parse SPARQL CSV results into nodes and edges."""
     nodes = {}
     edges = []
     seen_edges = set()
+    skipped = 0
 
     for row in results:
-        city_id = row["city"]["value"].split("/")[-1]
-        twin_id = row["twin"]["value"].split("/")[-1]
+        try:
+            # CSV format: flat columns with direct values
+            # city/twin columns contain full URIs like http://www.wikidata.org/entity/Q64
+            city_id = row["city"].split("/")[-1]
+            twin_id = row["twin"].split("/")[-1]
 
-        city_label = row.get("cityLabel", {}).get("value", city_id)
-        twin_label = row.get("twinLabel", {}).get("value", twin_id)
+            city_label = row.get("cityLabel", "") or city_id
+            twin_label = row.get("twinLabel", "") or twin_id
 
-        city_lat = float(row["cityLat"]["value"])
-        city_lon = float(row["cityLon"]["value"])
-        twin_lat = float(row["twinLat"]["value"])
-        twin_lon = float(row["twinLon"]["value"])
+            city_lat = float(row["cityLat"])
+            city_lon = float(row["cityLon"])
+            twin_lat = float(row["twinLat"])
+            twin_lon = float(row["twinLon"])
+        except (ValueError, KeyError, TypeError, AttributeError):
+            skipped += 1
+            continue
 
         # Store nodes
         if city_id not in nodes:
@@ -108,6 +115,8 @@ def parse_results(results):
                 "target": twin_id,
             })
 
+    if skipped:
+        print(f"  Skipped {skipped} rows with missing/invalid data.")
     print(f"  Parsed {len(nodes)} unique cities and {len(edges)} unique twinning relationships.")
     return nodes, edges
 
@@ -205,11 +214,22 @@ def export_json(nodes, edges, filename="twin_cities_data.json"):
             "targetContinent": tgt.get("continent", "Other"),
         })
 
+    # Build named edge list for client-side pathfinding
+    named_edges = []
+    for edge in edges:
+        src = nodes[edge["source"]]
+        tgt = nodes[edge["target"]]
+        named_edges.append({
+            "source": src["name"],
+            "target": tgt["name"],
+        })
+
     node_list = list(nodes.values())
 
     output = {
         "nodes": node_list,
         "arcs": arcs,
+        "edges": named_edges,
         "stats": {
             "totalCities": len(node_list),
             "totalConnections": len(arcs),

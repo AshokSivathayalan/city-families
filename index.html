@@ -12,6 +12,7 @@
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a1a; color: #e0e0e0; overflow: hidden; }
     #map { width: 100vw; height: 100vh; }
 
+    /* Panel */
     #panel {
       position: absolute;
       top: 16px;
@@ -21,19 +22,50 @@
       border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: 12px;
       padding: 20px;
-      max-width: 320px;
+      max-width: 340px;
+      width: 340px;
       z-index: 10;
     }
     #panel h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; color: #fff; }
-    #panel .subtitle { font-size: 13px; color: #888; margin-bottom: 16px; }
-    #panel .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
-    #panel .stat { background: rgba(255,255,255,0.04); border-radius: 8px; padding: 10px; }
-    #panel .stat .value { font-size: 22px; font-weight: 700; color: #6ee7b7; }
-    #panel .stat .label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+    #panel .subtitle { font-size: 13px; color: #888; margin-bottom: 12px; }
 
-    #controls { display: flex; flex-direction: column; gap: 8px; }
-    #controls label { font-size: 12px; color: #aaa; }
-    #controls select, #controls input[type=range] { width: 100%; }
+    /* Stats */
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+    .stat { background: rgba(255,255,255,0.04); border-radius: 8px; padding: 10px; }
+    .stat .value { font-size: 22px; font-weight: 700; color: #6ee7b7; }
+    .stat .label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    /* Tabs */
+    .tab-bar {
+      display: flex;
+      gap: 2px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 8px;
+      padding: 3px;
+      margin-bottom: 14px;
+    }
+    .tab-btn {
+      flex: 1;
+      background: none;
+      border: none;
+      color: #888;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 7px 0;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .tab-btn:hover { color: #ccc; }
+    .tab-btn.active { background: rgba(255,255,255,0.1); color: #fff; }
+
+    .tool-panel { display: none; }
+    .tool-panel.active { display: block; }
+
+    /* Shared form styles */
+    .tool-panel label { font-size: 12px; color: #aaa; display: block; margin-bottom: 4px; }
+    .tool-panel select, .tool-panel input[type=range] { width: 100%; }
+    .tool-panel .field { margin-bottom: 10px; }
     select {
       background: rgba(255,255,255,0.06);
       color: #e0e0e0;
@@ -41,8 +73,88 @@
       border-radius: 6px;
       padding: 6px 8px;
       font-size: 13px;
+      width: 100%;
     }
 
+    /* Autocomplete */
+    .autocomplete-wrap { position: relative; }
+    .autocomplete-wrap input {
+      width: 100%;
+      background: rgba(255,255,255,0.06);
+      color: #e0e0e0;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 13px;
+      outline: none;
+    }
+    .autocomplete-wrap input:focus { border-color: rgba(110, 231, 183, 0.4); }
+    .autocomplete-list {
+      position: absolute;
+      top: 100%;
+      left: 0; right: 0;
+      background: rgba(15, 15, 30, 0.98);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px;
+      margin-top: 2px;
+      max-height: 180px;
+      overflow-y: auto;
+      z-index: 30;
+      display: none;
+    }
+    .autocomplete-list.open { display: block; }
+    .autocomplete-item {
+      padding: 7px 10px;
+      font-size: 13px;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .autocomplete-item:hover, .autocomplete-item.selected { background: rgba(110, 231, 183, 0.12); color: #fff; }
+    .autocomplete-item:last-child { border-bottom: none; }
+
+    /* Buttons */
+    .btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-primary { background: #6ee7b7; color: #0a0a1a; }
+    .btn-primary:hover { background: #5dd9a8; }
+    .btn-primary:disabled { opacity: 0.4; cursor: default; }
+    .btn-ghost { background: rgba(255,255,255,0.06); color: #aaa; }
+    .btn-ghost:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .btn-row { display: flex; gap: 6px; margin-top: 4px; }
+
+    /* Path results */
+    #path-result { margin-top: 12px; display: none; }
+    #path-result.visible { display: block; }
+    .path-summary { font-size: 13px; color: #6ee7b7; margin-bottom: 8px; font-weight: 500; }
+    .path-list { list-style: none; padding: 0; }
+    .path-list li {
+      font-size: 12px;
+      padding: 5px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .path-list li:last-child { border-bottom: none; }
+    .hop-num {
+      background: rgba(110, 231, 183, 0.15);
+      color: #6ee7b7;
+      border-radius: 50%;
+      width: 20px; height: 20px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px; font-weight: 600;
+      flex-shrink: 0;
+    }
+    .path-error { font-size: 13px; color: #f87171; margin-top: 8px; }
+
+    /* Tooltip */
     #tooltip {
       position: absolute;
       pointer-events: none;
@@ -59,6 +171,7 @@
     #tooltip .tt-title { font-weight: 600; color: #fff; margin-bottom: 2px; }
     #tooltip .tt-detail { color: #aaa; font-size: 12px; }
 
+    /* Loading */
     #loading {
       position: absolute;
       inset: 0;
@@ -107,17 +220,58 @@
         <div class="label">Continents</div>
       </div>
     </div>
-    <div id="controls">
-      <label>Color arcs by</label>
-      <select id="color-mode">
-        <option value="community">Community</option>
-        <option value="continent">Source continent</option>
-        <option value="distance">Distance</option>
-      </select>
-      <label>Arc opacity</label>
-      <input type="range" id="opacity" min="5" max="100" value="35" />
-      <label>Arc width</label>
-      <input type="range" id="width" min="1" max="8" value="2" />
+
+    <!-- Tab bar -->
+    <div class="tab-bar">
+      <button class="tab-btn active" data-tab="map">Map</button>
+      <button class="tab-btn" data-tab="pathfinder">Pathfinder</button>
+    </div>
+
+    <!-- Map controls tab -->
+    <div class="tool-panel active" id="tab-map">
+      <div class="field">
+        <label>Color arcs by</label>
+        <select id="color-mode">
+          <option value="community">Community</option>
+          <option value="continent">Source continent</option>
+          <option value="distance">Distance</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Arc opacity</label>
+        <input type="range" id="opacity" min="5" max="100" value="35" />
+      </div>
+      <div class="field">
+        <label>Arc width</label>
+        <input type="range" id="width" min="1" max="8" value="2" />
+      </div>
+    </div>
+
+    <!-- Pathfinder tab -->
+    <div class="tool-panel" id="tab-pathfinder">
+      <div class="field">
+        <label>From city</label>
+        <div class="autocomplete-wrap" id="ac-from">
+          <input type="text" id="city-from" placeholder="Start typing a city name..." autocomplete="off" />
+          <div class="autocomplete-list" id="ac-from-list"></div>
+        </div>
+      </div>
+      <div class="field">
+        <label>To city</label>
+        <div class="autocomplete-wrap" id="ac-to">
+          <input type="text" id="city-to" placeholder="Start typing a city name..." autocomplete="off" />
+          <div class="autocomplete-list" id="ac-to-list"></div>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btn-find-path">Find Path</button>
+        <button class="btn btn-ghost" id="btn-clear-path">Clear</button>
+      </div>
+      <div id="path-result">
+        <div class="path-summary" id="path-summary"></div>
+        <ul class="path-list" id="path-list"></ul>
+      </div>
+      <div class="path-error" id="path-error" style="display:none;"></div>
     </div>
   </div>
 
@@ -129,106 +283,156 @@
   <div id="map"></div>
 
   <script>
-    // Community color palette (20 distinct colors)
+    // ── Color palettes ──
     const COMMUNITY_COLORS = [
-      [110, 231, 183], // emerald
-      [251, 146, 60],  // orange
-      [147, 130, 255], // purple
-      [251, 207, 74],  // yellow
-      [236, 72, 153],  // pink
-      [56, 189, 248],  // sky
-      [248, 113, 113], // red
-      [163, 230, 53],  // lime
-      [232, 121, 249], // fuchsia
-      [45, 212, 191],  // teal
-      [251, 191, 36],  // amber
-      [129, 140, 248], // indigo
-      [74, 222, 128],  // green
-      [244, 114, 182], // rose
-      [34, 211, 238],  // cyan
-      [253, 186, 116], // light orange
-      [192, 132, 252], // violet
-      [134, 239, 172], // light green
-      [252, 165, 165], // light red
-      [125, 211, 252], // light blue
+      [110, 231, 183], [251, 146, 60], [147, 130, 255], [251, 207, 74],
+      [236, 72, 153], [56, 189, 248], [248, 113, 113], [163, 230, 53],
+      [232, 121, 249], [45, 212, 191], [251, 191, 36], [129, 140, 248],
+      [74, 222, 128], [244, 114, 182], [34, 211, 238], [253, 186, 116],
+      [192, 132, 252], [134, 239, 172], [252, 165, 165], [125, 211, 252],
     ];
-
     const CONTINENT_COLORS = {
-      'Europe':        [110, 231, 183],
-      'Asia':          [251, 146, 60],
-      'North America': [147, 130, 255],
-      'South America': [251, 207, 74],
-      'Africa':        [236, 72, 153],
-      'Oceania':       [56, 189, 248],
-      'Other':         [180, 180, 180],
+      'Europe': [110, 231, 183], 'Asia': [251, 146, 60],
+      'North America': [147, 130, 255], 'South America': [251, 207, 74],
+      'Africa': [236, 72, 153], 'Oceania': [56, 189, 248], 'Other': [180, 180, 180],
     };
+    const PATH_COLOR = [255, 220, 80];
 
+    // ── State ──
     let allData = null;
     let deckInstance = null;
+    let adjacency = null;     // Map<name, Set<name>>
+    let cityByName = null;    // Map<name, nodeObj>
+    let cityNames = [];       // sorted list for autocomplete
+    let currentPath = null;   // array of city names, or null
 
+    // ── Tabs ──
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tool-panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      });
+    });
+
+    // ── Arc color helper ──
     function getArcColor(d, mode) {
       if (mode === 'community') {
         return COMMUNITY_COLORS[d.sourceCommunity % COMMUNITY_COLORS.length];
       } else if (mode === 'continent') {
         return CONTINENT_COLORS[d.sourceContinent] || CONTINENT_COLORS['Other'];
       } else {
-        // Distance-based: short = green, long = red
         const [x1, y1] = d.sourcePosition;
         const [x2, y2] = d.targetPosition;
         const dist = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
         const t = Math.min(dist / 180, 1);
-        return [
-          Math.round(110 + t * 141),  // 110 -> 251
-          Math.round(231 - t * 159),  // 231 -> 72
-          Math.round(183 - t * 30),   // 183 -> 153
-        ];
+        return [Math.round(110 + t * 141), Math.round(231 - t * 159), Math.round(183 - t * 30)];
       }
     }
 
+    // ── Layer rendering ──
     function updateLayers() {
       if (!allData || !deckInstance) return;
 
       const mode = document.getElementById('color-mode').value;
-      const opacity = parseInt(document.getElementById('opacity').value) / 100;
+      const baseOpacity = parseInt(document.getElementById('opacity').value) / 100;
       const width = parseInt(document.getElementById('width').value);
 
-      const arcLayer = new deck.ArcLayer({
+      // If a path is active, dim everything else
+      const dimmed = currentPath !== null;
+      const arcOpacity = dimmed ? 0.08 : baseOpacity;
+
+      const layers = [];
+
+      // Base arc layer
+      layers.push(new deck.ArcLayer({
         id: 'arcs',
         data: allData.arcs,
         getSourcePosition: d => d.sourcePosition,
         getTargetPosition: d => d.targetPosition,
-        getSourceColor: d => [...getArcColor(d, mode), Math.round(opacity * 255)],
-        getTargetColor: d => [...getArcColor(d, mode), Math.round(opacity * 180)],
+        getSourceColor: d => [...getArcColor(d, mode), Math.round(arcOpacity * 255)],
+        getTargetColor: d => [...getArcColor(d, mode), Math.round(arcOpacity * 180)],
         getWidth: width,
         greatCircle: true,
-        pickable: true,
+        pickable: !dimmed,
         autoHighlight: true,
         highlightColor: [255, 255, 255, 200],
         onHover: onArcHover,
-      });
+        updateTriggers: {
+          getSourceColor: [mode, arcOpacity],
+          getTargetColor: [mode, arcOpacity],
+        },
+      }));
 
-      const scatterLayer = new deck.ScatterplotLayer({
+      // Base scatter layer
+      layers.push(new deck.ScatterplotLayer({
         id: 'cities',
         data: allData.nodes,
         getPosition: d => [d.lon, d.lat],
         getFillColor: d => {
-          if (mode === 'community') {
-            return [...COMMUNITY_COLORS[d.community % COMMUNITY_COLORS.length], 200];
-          } else if (mode === 'continent') {
-            return [...(CONTINENT_COLORS[d.continent] || CONTINENT_COLORS['Other']), 200];
-          }
+          if (dimmed) return [150, 150, 150, 40];
+          if (mode === 'community') return [...COMMUNITY_COLORS[d.community % COMMUNITY_COLORS.length], 200];
+          if (mode === 'continent') return [...(CONTINENT_COLORS[d.continent] || CONTINENT_COLORS['Other']), 200];
           return [110, 231, 183, 200];
         },
         getRadius: d => Math.max(2, Math.sqrt(d.degree || 1)) * 8000,
         radiusMinPixels: 1.5,
         radiusMaxPixels: 12,
-        pickable: true,
+        pickable: !dimmed,
         onHover: onCityHover,
-      });
+        updateTriggers: { getFillColor: [mode, dimmed] },
+      }));
 
-      deckInstance.setProps({ layers: [arcLayer, scatterLayer] });
+      // Path highlight layers
+      if (currentPath && currentPath.length >= 2) {
+        // Build path arcs
+        const pathArcs = [];
+        for (let i = 0; i < currentPath.length - 1; i++) {
+          const src = cityByName.get(currentPath[i]);
+          const tgt = cityByName.get(currentPath[i + 1]);
+          if (src && tgt) {
+            pathArcs.push({
+              sourcePosition: [src.lon, src.lat],
+              targetPosition: [tgt.lon, tgt.lat],
+              sourceName: src.name,
+              targetName: tgt.name,
+            });
+          }
+        }
+
+        layers.push(new deck.ArcLayer({
+          id: 'path-arcs',
+          data: pathArcs,
+          getSourcePosition: d => d.sourcePosition,
+          getTargetPosition: d => d.targetPosition,
+          getSourceColor: [...PATH_COLOR, 255],
+          getTargetColor: [...PATH_COLOR, 200],
+          getWidth: Math.max(width * 2, 4),
+          greatCircle: true,
+          pickable: true,
+          onHover: onArcHover,
+        }));
+
+        // Path city dots
+        const pathNodes = currentPath.map(name => cityByName.get(name)).filter(Boolean);
+        layers.push(new deck.ScatterplotLayer({
+          id: 'path-cities',
+          data: pathNodes,
+          getPosition: d => [d.lon, d.lat],
+          getFillColor: [...PATH_COLOR, 230],
+          getRadius: 40000,
+          radiusMinPixels: 5,
+          radiusMaxPixels: 16,
+          pickable: true,
+          onHover: onCityHover,
+        }));
+      }
+
+      deckInstance.setProps({ layers });
     }
 
+    // ── Tooltips ──
     function onArcHover(info) {
       const tooltip = document.getElementById('tooltip');
       if (info.object) {
@@ -237,8 +441,9 @@
         tooltip.style.top = info.y + 12 + 'px';
         document.getElementById('tt-title').textContent =
           `${info.object.sourceName} \u2194 ${info.object.targetName}`;
-        document.getElementById('tt-detail').textContent =
-          `${info.object.sourceContinent} \u2194 ${info.object.targetContinent}`;
+        const detail = info.object.sourceContinent && info.object.targetContinent
+          ? `${info.object.sourceContinent} \u2194 ${info.object.targetContinent}` : '';
+        document.getElementById('tt-detail').textContent = detail;
       } else {
         tooltip.style.display = 'none';
       }
@@ -253,12 +458,148 @@
         document.getElementById('tt-title').textContent = info.object.name;
         const deg = info.object.degree || '?';
         document.getElementById('tt-detail').textContent =
-          `${deg} twin${deg !== 1 ? 's' : ''} \u00b7 ${info.object.continent}`;
+          `${deg} twin${deg !== 1 ? 's' : ''} \u00b7 ${info.object.continent || ''}`;
       } else {
         tooltip.style.display = 'none';
       }
     }
 
+    // ── Autocomplete ──
+    function setupAutocomplete(inputId, listId) {
+      const input = document.getElementById(inputId);
+      const list = document.getElementById(listId);
+      let selectedIdx = -1;
+
+      function render(matches) {
+        list.innerHTML = '';
+        selectedIdx = -1;
+        if (matches.length === 0) { list.classList.remove('open'); return; }
+        list.classList.add('open');
+        matches.slice(0, 50).forEach((name, i) => {
+          const div = document.createElement('div');
+          div.className = 'autocomplete-item';
+          div.textContent = name;
+          div.addEventListener('mousedown', e => {
+            e.preventDefault();
+            input.value = name;
+            list.classList.remove('open');
+          });
+          list.appendChild(div);
+        });
+      }
+
+      input.addEventListener('input', () => {
+        const q = input.value.toLowerCase().trim();
+        if (q.length < 1) { list.classList.remove('open'); return; }
+        // Prioritize starts-with matches, then includes
+        const starts = [];
+        const includes = [];
+        for (const name of cityNames) {
+          const lower = name.toLowerCase();
+          if (lower.startsWith(q)) starts.push(name);
+          else if (lower.includes(q)) includes.push(name);
+        }
+        render([...starts, ...includes]);
+      });
+
+      input.addEventListener('keydown', e => {
+        const items = list.querySelectorAll('.autocomplete-item');
+        if (!items.length) return;
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          selectedIdx = Math.min(selectedIdx + 1, items.length - 1);
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          selectedIdx = Math.max(selectedIdx - 1, 0);
+        } else if (e.key === 'Enter' && selectedIdx >= 0) {
+          e.preventDefault();
+          input.value = items[selectedIdx].textContent;
+          list.classList.remove('open');
+          return;
+        } else { return; }
+        items.forEach((el, i) => el.classList.toggle('selected', i === selectedIdx));
+        items[selectedIdx].scrollIntoView({ block: 'nearest' });
+      });
+
+      input.addEventListener('blur', () => {
+        setTimeout(() => list.classList.remove('open'), 150);
+      });
+      input.addEventListener('focus', () => {
+        if (input.value.trim().length >= 1) input.dispatchEvent(new Event('input'));
+      });
+    }
+
+    // ── BFS pathfinding ──
+    function bfs(source, target) {
+      if (source === target) return [source];
+      if (!adjacency.has(source) || !adjacency.has(target)) return null;
+
+      const visited = new Set([source]);
+      const queue = [[source]];
+
+      while (queue.length > 0) {
+        const path = queue.shift();
+        const current = path[path.length - 1];
+        const neighbors = adjacency.get(current);
+        if (!neighbors) continue;
+
+        for (const neighbor of neighbors) {
+          if (visited.has(neighbor)) continue;
+          const newPath = [...path, neighbor];
+          if (neighbor === target) return newPath;
+          visited.add(neighbor);
+          queue.push(newPath);
+        }
+      }
+
+      return null; // no path
+    }
+
+    function showPath(path) {
+      currentPath = path;
+      const resultEl = document.getElementById('path-result');
+      const summaryEl = document.getElementById('path-summary');
+      const listEl = document.getElementById('path-list');
+      const errorEl = document.getElementById('path-error');
+
+      errorEl.style.display = 'none';
+      resultEl.classList.add('visible');
+      summaryEl.textContent = `${path.length} cities, ${path.length - 1} hop${path.length - 1 !== 1 ? 's' : ''}`;
+
+      listEl.innerHTML = '';
+      path.forEach((name, i) => {
+        const li = document.createElement('li');
+        const num = document.createElement('span');
+        num.className = 'hop-num';
+        num.textContent = i + 1;
+        const label = document.createElement('span');
+        const city = cityByName.get(name);
+        label.textContent = city ? `${name} (${city.continent || ''})` : name;
+        li.appendChild(num);
+        li.appendChild(label);
+        listEl.appendChild(li);
+      });
+
+      updateLayers();
+    }
+
+    function showError(msg) {
+      document.getElementById('path-result').classList.remove('visible');
+      const errorEl = document.getElementById('path-error');
+      errorEl.textContent = msg;
+      errorEl.style.display = 'block';
+    }
+
+    function clearPath() {
+      currentPath = null;
+      document.getElementById('path-result').classList.remove('visible');
+      document.getElementById('path-error').style.display = 'none';
+      document.getElementById('city-from').value = '';
+      document.getElementById('city-to').value = '';
+      updateLayers();
+    }
+
+    // ── Init ──
     async function init() {
       try {
         const resp = await fetch('twin_cities_data.json');
@@ -273,25 +614,32 @@
         return;
       }
 
-      // Update stats
+      // Stats
       document.getElementById('stat-cities').textContent = allData.stats.totalCities.toLocaleString();
       document.getElementById('stat-connections').textContent = allData.stats.totalConnections.toLocaleString();
       document.getElementById('stat-families').textContent = allData.stats.communities.toLocaleString();
-
       const continents = new Set(allData.nodes.map(n => n.continent));
       document.getElementById('stat-countries').textContent = continents.size;
 
-      // Init Deck.gl with MapLibre base map
+      // Build adjacency map and city lookup from edges
+      adjacency = new Map();
+      cityByName = new Map();
+      for (const node of allData.nodes) {
+        cityByName.set(node.name, node);
+      }
+      for (const edge of (allData.edges || [])) {
+        if (!adjacency.has(edge.source)) adjacency.set(edge.source, new Set());
+        if (!adjacency.has(edge.target)) adjacency.set(edge.target, new Set());
+        adjacency.get(edge.source).add(edge.target);
+        adjacency.get(edge.target).add(edge.source);
+      }
+      cityNames = [...cityByName.keys()].sort();
+
+      // Init Deck.gl
       deckInstance = new deck.DeckGL({
         container: 'map',
         mapStyle: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
-        initialViewState: {
-          longitude: 10,
-          latitude: 30,
-          zoom: 2.2,
-          pitch: 35,
-          bearing: 0,
-        },
+        initialViewState: { longitude: 10, latitude: 30, zoom: 2.2, pitch: 35, bearing: 0 },
         controller: true,
         layers: [],
       });
@@ -299,10 +647,33 @@
       updateLayers();
       document.getElementById('loading').style.display = 'none';
 
-      // Wire up controls
+      // Wire map controls
       document.getElementById('color-mode').addEventListener('change', updateLayers);
       document.getElementById('opacity').addEventListener('input', updateLayers);
       document.getElementById('width').addEventListener('input', updateLayers);
+
+      // Wire autocomplete
+      setupAutocomplete('city-from', 'ac-from-list');
+      setupAutocomplete('city-to', 'ac-to-list');
+
+      // Wire pathfinder buttons
+      document.getElementById('btn-find-path').addEventListener('click', () => {
+        const from = document.getElementById('city-from').value.trim();
+        const to = document.getElementById('city-to').value.trim();
+
+        if (!from || !to) { showError('Enter both city names.'); return; }
+        if (!cityByName.has(from)) { showError(`City not found: "${from}"`); return; }
+        if (!cityByName.has(to)) { showError(`City not found: "${to}"`); return; }
+
+        const path = bfs(from, to);
+        if (path) {
+          showPath(path);
+        } else {
+          showError(`No path between "${from}" and "${to}" \u2014 they are in different sibling families.`);
+        }
+      });
+
+      document.getElementById('btn-clear-path').addEventListener('click', clearPath);
     }
 
     init();
