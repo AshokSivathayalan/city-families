@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Twin Cities of the World</title>
+  <script src="https://unpkg.com/deck.gl@latest/dist.min.js"></script>
+  <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a1a; color: #e0e0e0; overflow: hidden; }
+    #map { width: 100vw; height: 100vh; }
+
+    #panel {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      background: rgba(10, 10, 26, 0.92);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 20px;
+      max-width: 320px;
+      z-index: 10;
+    }
+    #panel h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; color: #fff; }
+    #panel .subtitle { font-size: 13px; color: #888; margin-bottom: 16px; }
+    #panel .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+    #panel .stat { background: rgba(255,255,255,0.04); border-radius: 8px; padding: 10px; }
+    #panel .stat .value { font-size: 22px; font-weight: 700; color: #6ee7b7; }
+    #panel .stat .label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    #controls { display: flex; flex-direction: column; gap: 8px; }
+    #controls label { font-size: 12px; color: #aaa; }
+    #controls select, #controls input[type=range] { width: 100%; }
+    select {
+      background: rgba(255,255,255,0.06);
+      color: #e0e0e0;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 13px;
+    }
+
+    #tooltip {
+      position: absolute;
+      pointer-events: none;
+      background: rgba(10, 10, 26, 0.95);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+      z-index: 20;
+      display: none;
+      max-width: 280px;
+    }
+    #tooltip .tt-title { font-weight: 600; color: #fff; margin-bottom: 2px; }
+    #tooltip .tt-detail { color: #aaa; font-size: 12px; }
+
+    #loading {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0a0a1a;
+      z-index: 100;
+      flex-direction: column;
+      gap: 12px;
+    }
+    #loading .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid rgba(255,255,255,0.1);
+      border-top-color: #6ee7b7;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div class="spinner"></div>
+    <div>Loading twin city data...</div>
+  </div>
+
+  <div id="panel">
+    <h1>Twin Cities of the World</h1>
+    <p class="subtitle">A network of sister city relationships</p>
+    <div class="stats">
+      <div class="stat">
+        <div class="value" id="stat-cities">-</div>
+        <div class="label">Cities</div>
+      </div>
+      <div class="stat">
+        <div class="value" id="stat-connections">-</div>
+        <div class="label">Connections</div>
+      </div>
+      <div class="stat">
+        <div class="value" id="stat-families">-</div>
+        <div class="label">Families</div>
+      </div>
+      <div class="stat">
+        <div class="value" id="stat-countries">-</div>
+        <div class="label">Continents</div>
+      </div>
+    </div>
+    <div id="controls">
+      <label>Color arcs by</label>
+      <select id="color-mode">
+        <option value="community">Community</option>
+        <option value="continent">Source continent</option>
+        <option value="distance">Distance</option>
+      </select>
+      <label>Arc opacity</label>
+      <input type="range" id="opacity" min="5" max="100" value="35" />
+      <label>Arc width</label>
+      <input type="range" id="width" min="1" max="8" value="2" />
+    </div>
+  </div>
+
+  <div id="tooltip">
+    <div class="tt-title" id="tt-title"></div>
+    <div class="tt-detail" id="tt-detail"></div>
+  </div>
+
+  <div id="map"></div>
+
+  <script>
+    // Community color palette (20 distinct colors)
+    const COMMUNITY_COLORS = [
+      [110, 231, 183], // emerald
+      [251, 146, 60],  // orange
+      [147, 130, 255], // purple
+      [251, 207, 74],  // yellow
+      [236, 72, 153],  // pink
+      [56, 189, 248],  // sky
+      [248, 113, 113], // red
+      [163, 230, 53],  // lime
+      [232, 121, 249], // fuchsia
+      [45, 212, 191],  // teal
+      [251, 191, 36],  // amber
+      [129, 140, 248], // indigo
+      [74, 222, 128],  // green
+      [244, 114, 182], // rose
+      [34, 211, 238],  // cyan
+      [253, 186, 116], // light orange
+      [192, 132, 252], // violet
+      [134, 239, 172], // light green
+      [252, 165, 165], // light red
+      [125, 211, 252], // light blue
+    ];
+
+    const CONTINENT_COLORS = {
+      'Europe':        [110, 231, 183],
+      'Asia':          [251, 146, 60],
+      'North America': [147, 130, 255],
+      'South America': [251, 207, 74],
+      'Africa':        [236, 72, 153],
+      'Oceania':       [56, 189, 248],
+      'Other':         [180, 180, 180],
+    };
+
+    let allData = null;
+    let deckInstance = null;
+
+    function getArcColor(d, mode) {
+      if (mode === 'community') {
+        return COMMUNITY_COLORS[d.sourceCommunity % COMMUNITY_COLORS.length];
+      } else if (mode === 'continent') {
+        return CONTINENT_COLORS[d.sourceContinent] || CONTINENT_COLORS['Other'];
+      } else {
+        // Distance-based: short = green, long = red
+        const [x1, y1] = d.sourcePosition;
+        const [x2, y2] = d.targetPosition;
+        const dist = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+        const t = Math.min(dist / 180, 1);
+        return [
+          Math.round(110 + t * 141),  // 110 -> 251
+          Math.round(231 - t * 159),  // 231 -> 72
+          Math.round(183 - t * 30),   // 183 -> 153
+        ];
+      }
+    }
+
+    function updateLayers() {
+      if (!allData || !deckInstance) return;
+
+      const mode = document.getElementById('color-mode').value;
+      const opacity = parseInt(document.getElementById('opacity').value) / 100;
+      const width = parseInt(document.getElementById('width').value);
+
+      const arcLayer = new deck.ArcLayer({
+        id: 'arcs',
+        data: allData.arcs,
+        getSourcePosition: d => d.sourcePosition,
+        getTargetPosition: d => d.targetPosition,
+        getSourceColor: d => [...getArcColor(d, mode), Math.round(opacity * 255)],
+        getTargetColor: d => [...getArcColor(d, mode), Math.round(opacity * 180)],
+        getWidth: width,
+        greatCircle: true,
+        pickable: true,
+        autoHighlight: true,
+        highlightColor: [255, 255, 255, 200],
+        onHover: onArcHover,
+      });
+
+      const scatterLayer = new deck.ScatterplotLayer({
+        id: 'cities',
+        data: allData.nodes,
+        getPosition: d => [d.lon, d.lat],
+        getFillColor: d => {
+          if (mode === 'community') {
+            return [...COMMUNITY_COLORS[d.community % COMMUNITY_COLORS.length], 200];
+          } else if (mode === 'continent') {
+            return [...(CONTINENT_COLORS[d.continent] || CONTINENT_COLORS['Other']), 200];
+          }
+          return [110, 231, 183, 200];
+        },
+        getRadius: d => Math.max(2, Math.sqrt(d.degree || 1)) * 8000,
+        radiusMinPixels: 1.5,
+        radiusMaxPixels: 12,
+        pickable: true,
+        onHover: onCityHover,
+      });
+
+      deckInstance.setProps({ layers: [arcLayer, scatterLayer] });
+    }
+
+    function onArcHover(info) {
+      const tooltip = document.getElementById('tooltip');
+      if (info.object) {
+        tooltip.style.display = 'block';
+        tooltip.style.left = info.x + 12 + 'px';
+        tooltip.style.top = info.y + 12 + 'px';
+        document.getElementById('tt-title').textContent =
+          `${info.object.sourceName} \u2194 ${info.object.targetName}`;
+        document.getElementById('tt-detail').textContent =
+          `${info.object.sourceContinent} \u2194 ${info.object.targetContinent}`;
+      } else {
+        tooltip.style.display = 'none';
+      }
+    }
+
+    function onCityHover(info) {
+      const tooltip = document.getElementById('tooltip');
+      if (info.object) {
+        tooltip.style.display = 'block';
+        tooltip.style.left = info.x + 12 + 'px';
+        tooltip.style.top = info.y + 12 + 'px';
+        document.getElementById('tt-title').textContent = info.object.name;
+        const deg = info.object.degree || '?';
+        document.getElementById('tt-detail').textContent =
+          `${deg} twin${deg !== 1 ? 's' : ''} \u00b7 ${info.object.continent}`;
+      } else {
+        tooltip.style.display = 'none';
+      }
+    }
+
+    async function init() {
+      try {
+        const resp = await fetch('twin_cities_data.json');
+        if (!resp.ok) throw new Error(`Failed to load data: ${resp.status}`);
+        allData = await resp.json();
+      } catch (e) {
+        document.getElementById('loading').innerHTML =
+          `<div style="color:#f87171; text-align:center; max-width:400px;">
+            <p style="font-size:16px; margin-bottom:8px;">Could not load twin_cities_data.json</p>
+            <p style="font-size:13px; color:#888;">Run <code style="background:rgba(255,255,255,0.1); padding:2px 6px; border-radius:4px;">python fetch_data.py</code> first to generate the data file.</p>
+          </div>`;
+        return;
+      }
+
+      // Update stats
+      document.getElementById('stat-cities').textContent = allData.stats.totalCities.toLocaleString();
+      document.getElementById('stat-connections').textContent = allData.stats.totalConnections.toLocaleString();
+      document.getElementById('stat-families').textContent = allData.stats.communities.toLocaleString();
+
+      const continents = new Set(allData.nodes.map(n => n.continent));
+      document.getElementById('stat-countries').textContent = continents.size;
+
+      // Init Deck.gl with MapLibre base map
+      deckInstance = new deck.DeckGL({
+        container: 'map',
+        mapStyle: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+        initialViewState: {
+          longitude: 10,
+          latitude: 30,
+          zoom: 2.2,
+          pitch: 35,
+          bearing: 0,
+        },
+        controller: true,
+        layers: [],
+      });
+
+      updateLayers();
+      document.getElementById('loading').style.display = 'none';
+
+      // Wire up controls
+      document.getElementById('color-mode').addEventListener('change', updateLayers);
+      document.getElementById('opacity').addEventListener('input', updateLayers);
+      document.getElementById('width').addEventListener('input', updateLayers);
+    }
+
+    init();
+  </script>
+</body>
+</html>
